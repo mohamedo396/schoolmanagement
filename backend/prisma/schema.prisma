@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ─────────────────────────────────────────────────────
+// Enums restrict a field to a fixed set of values.
+// The database enforces this — you can't accidentally store "ADMN"
+// instead of "ADMIN".
+
+enum Role {
+  ADMIN
+  TEACHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// ─── USER MODEL ────────────────────────────────────────────────
+// Represents both admins and teachers.
+// We use a single table with a Role enum to distinguish them.
+// This is called the "single table inheritance" pattern.
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  password     String                          // hashed, never plain text
+  firstName    String
+  lastName     String
+  role         Role     @default(TEACHER)
+  avatar       String?                         // ? means optional (nullable)
+  isActive     Boolean  @default(true)
+  refreshToken String?                         // stores the current refresh token
+
+  // Relations
+  classes      Class[]                         // a teacher can have many classes
+  gradeRecords GradeRecord[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt             // auto-updates on every save
+
+  @@map("users")                               // actual table name in the DB
+}
+
+// ─── GRADE LEVEL MODEL ─────────────────────────────────────────
+// Represents a year level: Year 1, Year 2, etc.
+// Separate from "Class" because one grade level can have
+// multiple classes (Year 1-A, Year 1-B, Year 1-C)
+
+model GradeLevel {
+  id          String  @id @default(uuid())
+  name        String  @unique               // "Year 1", "Year 2", etc.
+  description String?
+
+  // Relations
+  classes     Class[]
+  subjects    Subject[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("grade_levels")
+}
+
+// ─── CLASS MODEL ───────────────────────────────────────────────
+// A specific class instance: "Year 1-A", "Year 2-B"
+// Belongs to a GradeLevel, has one Teacher, has many Students
+
+model Class {
+  id           String   @id @default(uuid())
+  name         String                          // "Year 1-A"
+  academicYear String                          // "2024-2025"
+  capacity     Int      @default(30)
+
+  // Foreign Keys
+  gradeLevelId String
+  teacherId    String?
+
+  // Relations
+  gradeLevel   GradeLevel   @relation(fields: [gradeLevelId], references: [id])
+  teacher      User?        @relation(fields: [teacherId], references: [id])
+  students     Student[]
+  attendances  Attendance[]
+  gradeRecords GradeRecord[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([name, academicYear])               // can't have two "Year 1-A" in same year
+  @@map("classes")
+}
+
+// ─── STUDENT MODEL ─────────────────────────────────────────────
+// The core entity of the whole system.
+
+model Student {
+  id             String    @id @default(uuid())
+  studentId      String    @unique             // e.g. "STU-2024-001" — human readable ID
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime
+  gender         Gender
+  avatar         String?                       // Cloudinary URL
+
+  // Parent/Guardian info — stored directly on student for simplicity
+  parentName     String
+  parentPhone    String
+  parentEmail    String?
+  address        String?
+
+  isActive       Boolean   @default(true)
+
+  // Foreign Keys
+  classId        String
+
+  // Relations
+  class          Class         @relation(fields: [classId], references: [id])
+  attendances    Attendance[]
+  gradeRecords   GradeRecord[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("students")
+}
+
+// ─── SUBJECT MODEL ─────────────────────────────────────────────
+// Subjects like Math, Science, Arabic, French
+// Linked to a GradeLevel because Year 1 subjects differ from Year 6
+
+model Subject {
+  id           String   @id @default(uuid())
+  name         String                          // "Mathematics"
+  code         String   @unique               // "MATH-Y1"
+  description  String?
+
+  // Foreign Keys
+  gradeLevelId String
+
+  // Relations
+  gradeLevel   GradeLevel    @relation(fields: [gradeLevelId], references: [id])
+  gradeRecords GradeRecord[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("subjects")
+}
+
+// ─── ATTENDANCE MODEL ──────────────────────────────────────────
+// Records attendance for ONE student on ONE day in ONE class.
+// The combination of studentId + classId + date must be unique
+// — you can't mark the same student twice for the same day.
+
+model Attendance {
+  id        String           @id @default(uuid())
+  date      DateTime         @db.Date           // date only, no time
+  status    AttendanceStatus @default(PRESENT)
+  note      String?                             // optional teacher note
+
+  // Foreign Keys
+  studentId String
+  classId   String
+
+  // Relations
+  student   Student @relation(fields: [studentId], references: [id])
+  class     Class   @relation(fields: [classId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, classId, date])          // prevent duplicate attendance
+  @@map("attendances")
+}
+
+// ─── GRADE RECORD MODEL ────────────────────────────────────────
+// Stores a student's score for a specific subject,
+// recorded by a specific teacher, in a specific class.
+
+model GradeRecord {
+  id        String   @id @default(uuid())
+  score     Float                              // 0.0 to 100.0
+  maxScore  Float    @default(100)
+  term      String                             // "Term 1", "Term 2", "Term 3"
+  examType  String                             // "Quiz", "Midterm", "Final"
+  note      String?
+
+  // Foreign Keys
+  studentId String
+  subjectId String
+  classId   String
+  teacherId String
+
+  // Relations
+  student   Student @relation(fields: [studentId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  class     Class   @relation(fields: [classId], references: [id])
+  teacher   User    @relation(fields: [teacherId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("grade_records")
+}

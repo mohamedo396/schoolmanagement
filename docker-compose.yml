@@ -1,0 +1,20 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine        # lightweight postgres image
+    container_name: school_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mohamed123
+      POSTGRES_DB: school_db
+    ports:
+      - "5432:5432"                  # expose to localhost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # persist data
+
+volumes:
+  postgres_data:                     # named volume — survives container restarts
