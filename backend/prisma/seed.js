@@ -47,7 +47,7 @@ async function main() {
   ];
 
   const gradeLevels = await Promise.all(
-    gradeLevelNames.map((name, index) =>
+    gradeLevelNames.map((name, index ) =>
       prisma.gradeLevel.upsert({
         where: { name },
         update: {},
