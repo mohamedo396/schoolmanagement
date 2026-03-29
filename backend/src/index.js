@@ -1,4 +1,3 @@
-// src/index.js
 import express      from 'express';
 import cors         from 'cors';
 import helmet       from 'helmet';
@@ -6,7 +5,12 @@ import morgan       from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv       from 'dotenv';
 
-import authRoutes from './routes/auth.routes.js';
+import authRoutes       from './routes/auth.routes.js';
+import studentRoutes    from './routes/student.routes.js';
+import classRoutes      from './routes/class.routes.js';
+import attendanceRoutes from './routes/attendance.routes.js';
+import gradeRoutes      from './routes/grade.routes.js';
+import dashboardRoutes  from './routes/dashboard.routes.js';
 
 dotenv.config();
 
@@ -18,13 +22,18 @@ app.use(helmet());
 app.use(morgan('dev'));
 app.use(cors({
   origin:      process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true, // required for cookies to be sent cross-origin
+  credentials: true,
 }));
 app.use(express.json());
-app.use(cookieParser()); // must come after express.json()
+app.use(cookieParser());
 
 // ─── Routes ───────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
+app.use('/api/auth',       authRoutes);
+app.use('/api/students',   studentRoutes);
+app.use('/api/classes',    classRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/grades',     gradeRoutes);
+app.use('/api/dashboard',  dashboardRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -37,6 +46,8 @@ app.use((req, res) => {
 });
 
 // ─── Global Error Handler ─────────────────────────────────────
+// This catches any AppError thrown from services
+// and sends the right status code automatically
 app.use((err, req, res, next) => {
   console.error(err.stack);
   const statusCode = err.statusCode || 500;
